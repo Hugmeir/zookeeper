@@ -5,6 +5,6 @@ includedir=${prefix}/include/
 Name: @CMAKE_PROJECT_NAME@
 Description: Zookeeper C client library
 Version: @CMAKE_PROJECT_VERSION@
-Libs: -L${libdir} -lzookeeper
-Libs.private: @LIBS@ ${libdir}/libzookeeper@CMAKE_STATIC_LIBRARY_SUFFIX@
+Libs: -L${libdir} -lzookeeper_mt
+Libs.private: @LIBS@ ${libdir}/libzookeeper_mt@CMAKE_STATIC_LIBRARY_SUFFIX@
 Cflags: -I${includedir}
