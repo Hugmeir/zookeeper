@@ -168,9 +168,6 @@ configure_file(cmake_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/include/config.h)
 
 # hashtable library
 set(hashtable_sources src/hashtable/hashtable_itr.c src/hashtable/hashtable.c)
-add_library(hashtable STATIC ${hashtable_sources})
-target_include_directories(hashtable PUBLIC include)
-target_link_libraries(hashtable PUBLIC $<$<OR:$<PLATFORM_ID:Linux>,$<PLATFORM_ID:FreeBSD>>:m>)
 
 # zookeeper library
 set(zookeeper_sources
@@ -196,10 +193,31 @@ if(WIN32)
   list(APPEND zookeeper_sources src/winport.c)
 endif()
 
-add_library(zookeeper STATIC ${zookeeper_sources})
-target_include_directories(zookeeper PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include generated)
-target_link_libraries(zookeeper PUBLIC
-  hashtable
+add_library(zookeeper_obj    OBJECT ${zookeeper_sources} ${hashtable_sources})
+add_library(zookeeper_static STATIC $<TARGET_OBJECTS:zookeeper_obj>)
+add_library(zookeeper_shared SHARED $<TARGET_OBJECTS:zookeeper_obj>)
+
+target_include_directories(zookeeper_obj PUBLIC include generated)
+
+# -fPIC for the .so:
+set_property(TARGET zookeeper_obj    PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET zookeeper_shared PROPERTY POSITION_INDEPENDENT_CODE ON)
+
+target_include_directories(zookeeper_static PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include generated)
+target_include_directories(zookeeper_shared PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include generated)
+
+set(zookeeper_library_name "zookeeper_mt")
+if(NOT WANT_SYNCAPI)
+    set(zookeeper_library_name "zookeeper_st")
+endif()
+
+set_target_properties(zookeeper_static PROPERTIES OUTPUT_NAME ${zookeeper_library_name} CLEAN_DIRECT_OUTPUT 1)
+set_target_properties(zookeeper_shared PROPERTIES OUTPUT_NAME ${zookeeper_library_name} CLEAN_DIRECT_OUTPUT 1)
+
+target_link_libraries(zookeeper_static PUBLIC
+  $<$<PLATFORM_ID:Linux>:rt> # clock_gettime
+  $<$<PLATFORM_ID:Windows>:ws2_32>) # Winsock 2.0
+target_link_libraries(zookeeper_shared PUBLIC
   $<$<PLATFORM_ID:Linux>:rt> # clock_gettime
   $<$<PLATFORM_ID:Windows>:ws2_32>) # Winsock 2.0
 
@@ -211,8 +229,10 @@ if(NOT WITH_OPENSSL STREQUAL "OFF")
   endif()
   find_package(OpenSSL)
   if(OPENSSL_FOUND)
-    target_compile_definitions(zookeeper PUBLIC HAVE_OPENSSL_H)
-    target_link_libraries(zookeeper PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(zookeeper_static PUBLIC HAVE_OPENSSL_H)
+    target_link_libraries(zookeeper_static PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(zookeeper_shared PUBLIC HAVE_OPENSSL_H)
+    target_link_libraries(zookeeper_shared PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     set(LIBS ${LIBS} -lssl -lcrypto)
     message("-- OpenSSL libraries found! will build with SSL support.")
   else()
@@ -222,22 +242,25 @@ endif()
 
 if(WANT_SYNCAPI AND NOT WIN32)
   find_package(Threads REQUIRED)
-  target_link_libraries(zookeeper PUBLIC Threads::Threads)
+  target_link_libraries(zookeeper_static PUBLIC Threads::Threads)
+  target_link_libraries(zookeeper_shared PUBLIC Threads::Threads)
 endif()
 
 if(CYRUS_SASL_FOUND)
-  target_compile_definitions(zookeeper PUBLIC HAVE_CYRUS_SASL_H)
-  target_link_libraries(zookeeper PUBLIC CyrusSASL)
+  target_compile_definitions(zookeeper_shared PUBLIC HAVE_CYRUS_SASL_H)
+  target_link_libraries(zookeeper_shared PUBLIC CyrusSASL)
+  target_compile_definitions(zookeeper_static PUBLIC HAVE_CYRUS_SASL_H)
+  target_link_libraries(zookeeper_static PUBLIC CyrusSASL)
 endif()
 
 # cli executable
 add_executable(cli src/cli.c)
-target_link_libraries(cli zookeeper)
+target_link_libraries(cli zookeeper_static)
 
 # load_gen executable
 if(WANT_SYNCAPI AND NOT WIN32)
   add_executable(load_gen src/load_gen.c)
-  target_link_libraries(load_gen zookeeper)
+  target_link_libraries(load_gen zookeeper_static)
 endif()
 
 # tests
@@ -274,7 +297,7 @@ if(WANT_CPPUNIT)
   target_compile_definitions(zktest
     PRIVATE -DZKSERVER_CMD="${CMAKE_CURRENT_SOURCE_DIR}/tests/zkServer.sh")
   # TODO: Use `find_library()` for `cppunit`.
-  target_link_libraries(zktest zookeeper cppunit dl)
+  target_link_libraries(zktest zookeeper_static cppunit dl)
 
   # This reads the link flags from the file `tests/wrappers.opt` into
   # the variable `symbol_wrappers` for use in `target_link_libraries`.
@@ -307,7 +330,10 @@ INSTALL(FILES
     generated/zookeeper.jute.h
   DESTINATION include/zookeeper/)
 # libzookeeper.a ends up in /usr/local/lib/libzookeeper.a
-INSTALL(TARGETS zookeeper
+INSTALL(TARGETS
+    zookeeper_static
+    zookeeper_shared
+  LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
 
 if (UNIX)
