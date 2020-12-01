@@ -215,11 +215,23 @@ set_target_properties(zookeeper_static PROPERTIES OUTPUT_NAME ${zookeeper_librar
 set_target_properties(zookeeper_shared PROPERTIES OUTPUT_NAME ${zookeeper_library_name} CLEAN_DIRECT_OUTPUT 1)
 
 target_link_libraries(zookeeper_static PUBLIC
-  $<$<PLATFORM_ID:Linux>:rt> # clock_gettime
+  $<$<PLATFORM_ID:Linux>:rt>        # clock_gettime
+  $<$<PLATFORM_ID:Linux>:m>         # ceil
   $<$<PLATFORM_ID:Windows>:ws2_32>) # Winsock 2.0
 target_link_libraries(zookeeper_shared PUBLIC
-  $<$<PLATFORM_ID:Linux>:rt> # clock_gettime
+  $<$<PLATFORM_ID:Linux>:rt>        # clock_gettime
+  $<$<PLATFORM_ID:Linux>:m>         # ceil
   $<$<PLATFORM_ID:Windows>:ws2_32>) # Winsock 2.0
+
+# cli executable
+add_executable(cli src/cli.c)
+target_link_libraries(cli PUBLIC zookeeper_static)
+
+# load_gen executable
+if(WANT_SYNCAPI AND NOT WIN32)
+  add_executable(load_gen src/load_gen.c)
+  target_link_libraries(load_gen PUBLIC zookeeper_static)
+endif()
 
 option(WITH_OPENSSL "turn ON/OFF SSL support, or define openssl library location (default: ON)" ON)
 message("-- using WITH_OPENSSL=${WITH_OPENSSL}")
@@ -229,10 +241,18 @@ if(NOT WITH_OPENSSL STREQUAL "OFF")
   endif()
   find_package(OpenSSL)
   if(OPENSSL_FOUND)
+    target_compile_definitions(zookeeper_obj PUBLIC HAVE_OPENSSL_H)
+    target_link_libraries(zookeeper_obj PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     target_compile_definitions(zookeeper_static PUBLIC HAVE_OPENSSL_H)
     target_link_libraries(zookeeper_static PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     target_compile_definitions(zookeeper_shared PUBLIC HAVE_OPENSSL_H)
     target_link_libraries(zookeeper_shared PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    target_compile_definitions(cli PUBLIC HAVE_OPENSSL_H)
+    target_link_libraries(cli PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    if(WANT_SYNCAPI AND NOT WIN32)
+        target_compile_definitions(load_gen PUBLIC HAVE_OPENSSL_H)
+        target_link_libraries(load_gen PUBLIC OpenSSL::SSL OpenSSL::Crypto)
+    endif()
     set(LIBS ${LIBS} -lssl -lcrypto)
     message("-- OpenSSL libraries found! will build with SSL support.")
   else()
@@ -242,25 +262,18 @@ endif()
 
 if(WANT_SYNCAPI AND NOT WIN32)
   find_package(Threads REQUIRED)
+  target_link_libraries(zookeeper_obj    PUBLIC Threads::Threads)
   target_link_libraries(zookeeper_static PUBLIC Threads::Threads)
   target_link_libraries(zookeeper_shared PUBLIC Threads::Threads)
 endif()
 
 if(CYRUS_SASL_FOUND)
+  target_compile_definitions(zookeeper_obj PUBLIC HAVE_CYRUS_SASL_H)
+  target_link_libraries(zookeeper_obj PUBLIC CyrusSASL)
   target_compile_definitions(zookeeper_shared PUBLIC HAVE_CYRUS_SASL_H)
   target_link_libraries(zookeeper_shared PUBLIC CyrusSASL)
   target_compile_definitions(zookeeper_static PUBLIC HAVE_CYRUS_SASL_H)
   target_link_libraries(zookeeper_static PUBLIC CyrusSASL)
-endif()
-
-# cli executable
-add_executable(cli src/cli.c)
-target_link_libraries(cli zookeeper_static)
-
-# load_gen executable
-if(WANT_SYNCAPI AND NOT WIN32)
-  add_executable(load_gen src/load_gen.c)
-  target_link_libraries(load_gen zookeeper_static)
 endif()
 
 # tests
