@@ -352,6 +352,7 @@ INSTALL(TARGETS
 if (UNIX)
   INCLUDE(FindPkgConfig QUIET)
   if(PKG_CONFIG_FOUND)
+    string(REPLACE ";" " " ZK_REQUIRES "${LIBS}")
     # generate .pc and install
     CONFIGURE_FILE("libzookeeper.pc.in" "libzookeeper.pc" @ONLY)
     INSTALL(FILES libzookeeper.pc
