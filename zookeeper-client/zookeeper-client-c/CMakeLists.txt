@@ -199,8 +199,9 @@ add_library(zookeeper_shared SHARED $<TARGET_OBJECTS:zookeeper_obj>)
 
 target_include_directories(zookeeper_obj PUBLIC include generated)
 
-# -fPIC for the .so:
+# -fPIC:
 set_property(TARGET zookeeper_obj    PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET zookeeper_static PROPERTY POSITION_INDEPENDENT_CODE ON)
 set_property(TARGET zookeeper_shared PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(zookeeper_static PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/include generated)
